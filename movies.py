@@ -1,4 +1,3 @@
-import json
 import os
 from time import time
 
@@ -9,16 +8,7 @@ import pandas as pd
 import streamlit as st
 import torch
 
-import utils
-from utils import (
-    DEFAULT_TEXT,
-    generate_chart,
-    get_embeddings,
-    get_umap,
-    related_podcasts,
-    seed_everything,
-    streamlit_header_and_footer_setup,
-)
+from utils import seed_everything, streamlit_header_and_footer_setup
 
 torchfy = lambda x: torch.as_tensor(x, dtype=torch.float32)
 

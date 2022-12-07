@@ -1,47 +1,8 @@
 import os
 import random
-from typing import Any, Dict, List, Union
-
-import altair as alt
-import cohere
 import numpy as np
-import pandas as pd
-import sklearn
 import streamlit as st
 import torch
-import umap
-from pyrate_limiter import Duration, Limiter, MemoryListBucket, RequestRate
-from sklearn.metrics.pairwise import cosine_similarity
-from stqdm import stqdm
-from tqdm import tqdm
-
-DEFAULT_TEXT = """Hello from Cohere!
-مرحبًا من كوهير!
-Hallo von Cohere!
-Bonjour de Cohere!
-¡Hola desde Cohere!
-Olá do Cohere!
-Ciao da Cohere!
-您好，来自 Cohere！
-안녕하세요 코히어입니다!
-कोहेरे से नमस्ते!
-Cohere provides the best multilingual models in the world
-يوفر كوهير أفضل النماذج متعددة اللغات في العالم
-Cohere bietet die besten mehrsprachigen Modelle der Welt
-Cohere fournit les meilleurs modèles multilingues au monde
-Cohere fornisce i migliori modelli multilingue del mondo
-Cohere ofrece los mejores modelos multilingües del mundo
-Cohere fornece os melhores modelos multilíngues do mundo
-Cohere는 세계 최고의 다국어 모델을 제공합니다.
-Cohere 提供世界上最好的多语言模型
-Cohere दुनिया में सर्वश्रेष्ठ बहुभाषी मॉडल प्रदान करता है"""
-
-torchfy = lambda x: torch.as_tensor(x, dtype=torch.float32)
-
-minute_rate = RequestRate(10_000, Duration.MINUTE)
-limiter = Limiter(minute_rate, bucket_class=MemoryListBucket)
-NUM_THREADS = 2 * os.cpu_count()  # 2 threads per cpu core is standard
-N_MAX_RETRIES = 10
 
 
 def seed_everything(seed: int):
@@ -52,134 +13,6 @@ def seed_everything(seed: int):
     torch.cuda.manual_seed(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = True
-
-
-def get_embeddings(co: cohere.Client,
-                   texts: List[str],
-                   model_name: str = 'multilingual-labse',
-                   truncate: str = 'RIGHT',
-                   batch_size: int = 2048) -> List[float]:
-
-    @limiter.ratelimit("blobheart", delay=True)
-    def get_embeddings_api(texts_batch: List[str]):
-
-        for i in range(N_MAX_RETRIES):
-            try:
-                output = co.embed(model=model_name, texts=texts_batch, truncate=truncate)
-                break
-            except Exception as e:
-                if i == (N_MAX_RETRIES - 1):
-                    print(f"Exceeded max retries with error {e}")
-                    raise f"Error {e}"
-        return output.embeddings
-
-    # texts_batchs = []
-    # for index in range(0, len(texts), batch_size):
-    #     texts_batch = texts[index:index + batch_size]
-    #     texts_batchs.append(texts_batch)
-    # with ThreadPool(NUM_THREADS) as pool:
-    #     embeddings = list(tqdm(pool.imap(get_embeddings_api, texts_batchs), total=len(texts_batchs)))
-    embeddings = []
-    # st_pbar = stqdm(range(0, len(texts), batch_size),
-    #                 st_container=st.sidebar,
-    #                 desc=f"Processing {batch_size} example per iteration",
-    #                 backend=True,
-    #                 frontend=True)
-    st_pbar = tqdm(range(0, len(texts), batch_size))
-    for index in st_pbar:
-        texts_batch = texts[index:index + batch_size]
-        embeddings_batch = get_embeddings_api(texts_batch)  #list(pool.imap(get_embeddings_api, [texts_batch]))
-        embeddings.append(embeddings_batch)
-    return np.concatenate(embeddings, axis=0).tolist()
-
-
-def get_umap(embeds: Union[List, np.array], n_neighbors: int = 100):
-    reducer = umap.UMAP()  #(n_neighbors=n_neighbors)
-    umap_embeds = reducer.fit_transform(embeds)
-    return umap_embeds
-
-
-def generate_chart(df: pd.DataFrame,
-                   *,
-                   xcol: str,
-                   ycol: str,
-                   lbl: str = 'on',
-                   color: str = 'basic',
-                   title: str = '',
-                   tooltip: List[str] = ['']) -> alt.Chart:
-    chart = alt.Chart(df).mark_circle(size=100).encode(
-        x=alt.X(xcol, scale=alt.Scale(zero=False), axis=alt.Axis(labels=False, ticks=False, domain=False)),
-        y=alt.Y(ycol, scale=alt.Scale(zero=False), axis=alt.Axis(labels=False, ticks=False, domain=False)),
-        color=alt.value('#333293') if color == 'basic' else color,
-        tooltip=tooltip,
-    )
-
-    result = chart.configure(background="#FDF7F0").properties(width=1200, height=800,
-                                                              title=title).configure_legend(titleFontSize=18,
-                                                                                            labelFontSize=18)
-
-    # text = chart.mark_text(align='left', baseline='middle', dx=7).encode(
-    #     text='texts',
-    #     x='x',
-    #     y='y',
-    # )
-
-    # result = (chart + text).configure(background="#FDF7F0").properties(width=1200, height=800,
-    #                                                                    title=title).configure_legend(orient='bottom',
-    #                                                                                                  titleFontSize=18,
-    #                                                                                                  labelFontSize=18)
-
-    return result.interactive()
-
-
-def get_similarity(target: List[float], candidates: List[float], top_k: int):
-    candidates = np.array(candidates)
-    target = np.array(target)
-    cos_scores = cosine_similarity(target, candidates)
-    # cos_scores = torch.mm(torchfy(target), torchfy(candidates).transpose(0, 1))
-
-    scores, indices = torch.topk(torchfy(cos_scores), k=top_k)
-    similarity_hits = [{'id': idx, 'score': score} for idx, score in zip(indices[0].tolist(), scores[0].tolist())]
-
-    return similarity_hits
-
-
-def related_podcasts(co: cohere.Client, query_text: str, model_name: str, top_k: int = 5):
-    query_emb = get_embeddings(co, [query_text], model_name=model_name)
-    similarity_hits = get_similarity(query_emb, st.session_state.embeddings, top_k=top_k)
-    return query_emb, similarity_hits
-
-
-def get_metrics(probabilities: np.ndarray, predictions: np.ndarray, labels: np.ndarray) -> Dict[str, Any]:
-
-    N_classes = len(np.unique(labels))
-    assert N_classes > 1, "Number of classes should be bigger than 1 for classification"
-    if N_classes == 2:
-        probabilities = probabilities[:, 1]
-
-    average = 'binary' if N_classes <= 2 else 'macro'
-    metrics = {
-        'accuracy': sklearn.metrics.accuracy_score(labels, predictions),
-        'f1_score': sklearn.metrics.f1_score(labels, predictions, average=average),
-        'precision': sklearn.metrics.precision_score(labels, predictions, average=average),
-        'recall': sklearn.metrics.recall_score(labels, predictions, average=average),
-        'confusion_matrix': sklearn.metrics.confusion_matrix(labels, predictions)
-    }
-    if N_classes == 2:
-        best_probabilities = probabilities
-        thresholds = np.arange(0, 1, 0.01)
-        f1_scores = []
-        accuracy_scores = []
-        for threshold in thresholds:
-            predictions = (best_probabilities > threshold).astype(int)
-            accuracy = sklearn.metrics.accuracy_score(labels, predictions)
-            f1 = sklearn.metrics.f1_score(labels, predictions, average='binary')
-            f1_scores.append(f1)
-            accuracy_scores.append(accuracy)
-        metrics['best_f1_score'] = max(f1_scores)
-        metrics['best_accuracy_score'] = max(accuracy_scores)
-
-    return metrics
 
 
 def streamlit_header_and_footer_setup():
@@ -197,7 +30,7 @@ def streamlit_header_and_footer_setup():
             nav{
                 flex-direction: column !important;
                 gap: 15px !important;
-            }    
+            }
         }
         </style>
         <nav class="navbar fixed-top navbar-expand-lg navbar-dark" style="background-color: #000; justify-content:space-between;">
@@ -215,7 +48,8 @@ def streamlit_header_and_footer_setup():
                 </ul>
             </div>
         </nav>
-    """, unsafe_allow_html=True)
+    """,
+                unsafe_allow_html=True)
 
     hide_st_style = """
         <style>
@@ -234,4 +68,3 @@ def streamlit_header_and_footer_setup():
         </style>
     """
     st.markdown(hide_st_style, unsafe_allow_html=True)
-
