@@ -65,10 +65,10 @@ search_expander = st.expander(label='Search Fields, Expand me!')
 with search_expander:
     'Hello there!'
     limit = st.slider("limit", min_value=1, max_value=100, value=5, step=1)
-    # selected_languages = st.multiselect(
-    #     label=f"Desired languages | Number of Unique languages: {len(movies_available_languages)}",
-    #     options=movies_available_languages,
-    # )
+    selected_languages = st.multiselect(
+        label=f"Desired languages | Number of Unique languages: {len(movies_available_languages)}",
+        options=movies_available_languages,
+    )
     output_fields: List[str] = [
         "movieId", "id", "imdb_id", "original_title", "title", "overview", "genres", "release_date", "language_code",
         "lang2idx", "language_name"
@@ -76,6 +76,13 @@ with search_expander:
 
 retrieve_button = st.button("retrieve! 🧐")
 if query_text or retrieve_button:
+    if selected_languages:
+        selected_languages_str = "|".join(language for language in selected_languages)
+        sub_movies_df = movies_df[movies_df["language_name"].str.contains(selected_languages_str, regex=True)]
+        candidates = np.array(sub_movies_df.embeddings.values.tolist(), dtype=np.float32)
+    else:
+        sub_movies_df = movies_df
+
     print(f"Query: {query_text}")
     vectors_to_search = np.array(
         co.embed(model=model_name, texts=[query_text], truncate="RIGHT").embeddings,
@@ -90,7 +97,7 @@ if query_text or retrieve_button:
     similar_results = {}
     for index, hit in enumerate(result):
         print(hit)
-        similar_example = movies_df.iloc[hit['id']]
+        similar_example = sub_movies_df.iloc[hit['id']]
         similar_results[index] = {podcast_field: similar_example[podcast_field] for podcast_field in output_fields}
         # similar_results[index].update({"distance": hit.distance})
 
