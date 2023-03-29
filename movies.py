@@ -24,9 +24,9 @@ def get_similarity(target: List[float], candidates: List[float], top_k: int):
     return similarity_hits
 
 
-import imdb
+from imdb import Cinemagoer
 
-ia = imdb.IMDb()
+ia = Cinemagoer()
 
 seed_everything(3777)
 
@@ -40,7 +40,7 @@ COHERE_API_KEY = os.environ.get("COHERE_API_KEY")
 co = cohere.Client(COHERE_API_KEY)
 
 
-@st.cache()
+@st.cache_data()
 def setup():
     PODCAST_FIELDS = [
         "movieId", "id", "imdb_id", "original_title", "title", "overview", "genres", "release_date", "language_code",
