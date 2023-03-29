@@ -40,7 +40,7 @@ COHERE_API_KEY = os.environ.get("COHERE_API_KEY")
 co = cohere.Client(COHERE_API_KEY)
 
 
-@st.cache_data()
+@st.cache()
 def setup():
     PODCAST_FIELDS = [
         "movieId", "id", "imdb_id", "original_title", "title", "overview", "genres", "release_date", "language_code",
